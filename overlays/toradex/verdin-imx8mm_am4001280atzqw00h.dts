@@ -1,0 +1,54 @@
+// AM-4001280ATZQW-00H MIPI-DSI panel overlay for the panel-ampire-am4001280atzqw00h.c driver.
+
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/*
+ * Copyright 2022 Jan Greiner
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	compatible = "toradex,verdin-imx8mm";
+};
+
+/* Verdin I2C_2_DSI */
+&i2c2 {
+	status = "okay";
+};
+
+&gpu {
+	status = "okay";
+};
+
+&lcdif {
+	status = "okay";
+};
+
+&backlight {
+	status = "okay";
+};
+
+&reg_mipi_phy {
+	status = "okay";
+};
+
+&mipi_dsi {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+	panel@0 {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				compatible = "ampire,am40001280";
+				reg = <0>;
+				v3p3-supply = <&reg_mipi_phy>;
+				reset-gpios = <&gpio3 3 GPIO_ACTIVE_LOW>;
+				backlight = <&backlight>;
+				dsi-lanes = <4>;
+				video-mode = <0>;	/* 0: burst mode 1 (not supported): non-burst mode with sync event 2: non-burst mode with sync pulse */
+				status = "okay";
+	};
+};
