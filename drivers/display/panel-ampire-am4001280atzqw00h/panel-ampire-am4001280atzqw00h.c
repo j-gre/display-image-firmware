@@ -33,6 +33,7 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/of_device.h>
+#include <linux/of_graph.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <linux/media-bus-format.h>
@@ -530,7 +531,6 @@ static int am4001280atzqw00h_enable(struct drm_panel *panel)
  */
 static int am4001280atzqw00h_platform_enable(struct panel_driver_data *drv_data)
 {
-	struct drm_panel *panel = &drv_data->panel;
 	struct mipi_dsi_device *dsi = drv_data->dsi;
 	struct device *dev = &dsi->dev;
 	int color_format = color_format_from_dsi_format(dsi->format);
@@ -688,11 +688,11 @@ static int am4001280atzqw00h_wait(struct drm_panel *panel, ktime_t start_ktime, 
 /**
  *
  */
+ 
 static int am4001280atzqw00h_get_modes(struct drm_panel *panel)
 {
 	struct panel_driver_data *drv_data = panel_to_drv_data(panel);
 	struct drm_connector *connector = panel->connector;
-	struct mipi_dsi_device *dsi = drv_data->dsi;
 	struct drm_display_mode *mode;
 
 	mode = drm_mode_duplicate(panel->drm, &am4001280atzqw00h_mode);
@@ -827,6 +827,13 @@ static int am4001280atzqw00h_probe(struct mipi_dsi_device *dsi)
 	struct panel_driver_data *drv_data;
 	struct device *dev = &dsi->dev;
 	struct device_node *dev_node = dev->of_node;
+	struct device_node *endpoint;
+	struct mipi_dsi_host *dsi_host;
+	struct mipi_dsi_device_info info = {
+		.type = "AM40001280",
+		.channel = 0,
+		.node = NULL,
+	};
 	const struct of_device_id *of_id = of_match_device(panel_of_match, dev);
 	struct backlight_properties bl_props;
 	u32 video_mode;
@@ -842,6 +849,42 @@ static int am4001280atzqw00h_probe(struct mipi_dsi_device *dsi)
 
 	if (!drv_data) {
 		return -ENOMEM;
+	}
+
+	/** DSI host driver lookup */
+
+    endpoint = of_graph_get_next_endpoint(dev->of_node, NULL);
+	if(!endpoint) {
+		DRM_DEV_ERROR(dev, "Cannot get the next endpoint node (%d)\n", -ENODEV);
+		return -ENODEV;
+	}
+
+	dev_node = of_graph_get_remote_port_parent(endpoint);
+	if(!dev_node) {
+		DRM_DEV_ERROR(dev, "Cannot the remote port's parent node (%d)\n", -ENODEV);
+		goto fail;
+	}
+	
+	dsi_host = of_find_mipi_dsi_host_by_node(dev_node);
+	of_node_put(dev_node);
+
+	if (!dsi_host) {
+		DRM_DEV_ERROR(dev, "Cannot get DSI host driver \n", -EPROBE_DEFER);
+		of_node_put(endpoint);
+		return -EPROBE_DEFER;
+	}
+
+	info.node = of_graph_get_remote_port(endpoint);
+	if(!info.node) {
+		DRM_DEV_ERROR(dev, "Cannot the remote port node (%d)\n", -ENODEV);
+		goto fail;
+	}
+	of_node_put(endpoint);
+
+	dsi = mipi_dsi_device_register_full(dsi_host, &info);
+	if(IS_ERR(dsi)) {
+		DRM_DEV_ERROR(dev, "Unable to register dsi device (%d)\n", 1);
+		return PTR_ERR(dsi);
 	}
 	
 	mipi_dsi_set_drvdata(dsi, drv_data);
@@ -917,11 +960,8 @@ static int am4001280atzqw00h_probe(struct mipi_dsi_device *dsi)
 	drv_data->panel.dev = dev;
 	dev_set_drvdata(dev, drv_data);
 
-	ret = drm_panel_add(&drv_data->panel);
-	if (ret < 0) {
-		DRM_DEV_ERROR(dev, "Failed to add panel during probe (%d)\n", ret);
-		return ret;
-	}
+	drm_panel_add(&drv_data->panel);
+
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
@@ -931,6 +971,11 @@ static int am4001280atzqw00h_probe(struct mipi_dsi_device *dsi)
 	}
 
 	return 0;
+
+	fail:
+
+		of_node_put(endpoint);
+		return -ENODEV;
 }
 
 
